@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime
 
 from g15lcd.device import HEIGHT, WIDTH
-from g15lcd.pages.gpu import GpuPage, GpuStats, Sampler, find_card, shorten_name
+from g15lcd.pages.gpu import GpuPage, MovingAverage, GpuStats, Sampler, find_card, shorten_name
 
 NOW = datetime(2026, 1, 1, 12, 0, 0)
 
@@ -185,6 +185,96 @@ class PageTests(unittest.TestCase):
             for v in (0, 1):
                 p.view = v
                 self.assertTrue(p.render(NOW).getbbox())
+
+
+class ScriptedSampler:
+    """sample() = full read, read_busy() = fast read; values come from a queue."""
+
+    def __init__(self):
+        self.next = (None, None)
+        self.fast_calls = 0
+
+    def sample(self):
+        return GpuStats(name="X", busy=self.next[0], mem_busy=self.next[1])
+
+    def read_busy(self):
+        self.fast_calls += 1
+        return self.next
+
+
+class FakeClock:
+    t = 100.0
+
+    def __call__(self):
+        return self.t
+
+
+class BusyAverageTests(unittest.TestCase):
+    def make(self, **kw):
+        p = GpuPage(sampler=ScriptedSampler(), **kw)
+        p._mono = FakeClock()
+        return p
+
+    def step(self, p, dt, busy, mem):
+        p._mono.t += dt
+        p.sampler.next = (busy, mem)
+        p._tick()
+
+    def test_window_drops_old_samples(self):
+        m = MovingAverage(2.0)
+        m.add(0, 100)
+        m.add(1, 50)
+        self.assertEqual(m.mean(1), 75)
+        self.assertEqual(m.mean(2.5), 50)   # t=0 sample fell out
+        self.assertIsNone(m.mean(10))
+
+    def test_none_ignored_and_dashes_when_empty(self):
+        m = MovingAverage(2.0)
+        m.add(0, None)
+        self.assertIsNone(m.mean(0))
+        m.add(0.1, 40)
+        m.add(0.2, None)
+        self.assertEqual(m.mean(0.2), 40)
+        p = self.make()
+        self.step(p, 0, None, None)
+        p.view = 1
+        self.assertTrue(p.render(NOW).getbbox())  # shows "--", no crash
+        self.assertIsNone(p._mem.mean(p._mono()))
+
+    def test_page_averages_fast_reads(self):
+        p = self.make(busy_window=1.0)
+        for v in (0, 100, 0, 100):
+            self.step(p, 0.1, v, v)
+        self.assertEqual(p._mem.mean(p._mono()), 50)
+        self.assertGreater(p.sampler.fast_calls, 0)
+        self.step(p, 5, 10, 10)  # everything older drops out
+        self.assertEqual(p._busy.mean(p._mono()), 10)
+
+    def test_hist_appends_once_per_second(self):
+        p = self.make()
+        for _ in range(35):
+            self.step(p, 0.1, 60, 0)
+        self.assertEqual(len(p._hist), 4)  # t=0.1,1.1,2.1,3.1
+        self.assertEqual(list(p._hist), [60] * 4)
+
+    def test_option_validation(self):
+        with self.assertLogs("g15lcd.pages.gpu", "WARNING"):
+            p = GpuPage(sampler=ScriptedSampler(), busy_rate=0, busy_window=-1)
+        self.assertEqual((p.busy_rate, p.busy_window), (10.0, 2.5))
+        with self.assertLogs("g15lcd.pages.gpu", "WARNING"):
+            self.assertEqual(GpuPage(sampler=ScriptedSampler(), busy_rate=99).busy_rate, 10.0)
+        with self.assertLogs("g15lcd.pages.gpu", "WARNING"):
+            GpuPage(sampler=ScriptedSampler(), busy_rate="fast")
+        p = GpuPage(sampler=ScriptedSampler(), busy_rate=20, busy_window=1)
+        self.assertEqual((p.busy_rate, p.busy_window), (20.0, 1.0))
+
+    def test_render_size_both_views(self):
+        p = self.make()
+        self.step(p, 0.1, 80, 30)
+        for v in (0, 1):
+            p.view = v
+            img = p.render(NOW)
+            self.assertEqual((img.size, img.mode), ((WIDTH, HEIGHT), "1"))
 
 
 if __name__ == "__main__":

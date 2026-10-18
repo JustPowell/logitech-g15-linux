@@ -1,6 +1,8 @@
 """GPU page: load, VRAM, temperatures, power and fan of an amdgpu, read from sysfs.
 
 Sampled once a second in a background task; ``render()`` only reads the cache.
+The two busy metrics (core and memory-controller bandwidth) are instantaneous and
+bursty, so they are read at ~10 Hz and shown as a moving average.
 Every sysfs file is optional (integrated GPUs expose fewer), so each value is
 read defensively and shown as "--" when missing.
 
@@ -15,8 +17,9 @@ import logging
 import os
 import re
 import subprocess
+import time
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from PIL import Image
@@ -182,6 +185,12 @@ class Sampler:
                 return _scaled(p.replace("_label", "_input"), 1000)
         return _scaled(f"{self.hwmon}/temp{index}_input", 1000)
 
+    def read_busy(self) -> tuple[float | None, float | None]:
+        """Just the two cheap busy-percent files: (gpu, memory bandwidth)."""
+        if not self.dev:
+            return None, None
+        return (_num(f"{self.dev}/gpu_busy_percent"), _num(f"{self.dev}/mem_busy_percent"))
+
     def sample(self) -> GpuStats:
         if not self.dev:
             return GpuStats(present=False)
@@ -230,18 +239,58 @@ def _n(v: float | None, spec: str = ".0f", suffix: str = "") -> str:
     return "--" if v is None else f"{v:{spec}}{suffix}"
 
 
+class MovingAverage:
+    """Time-windowed mean; None samples are ignored."""
+
+    def __init__(self, window: float) -> None:
+        self.window = window
+        self._q: deque[tuple[float, float]] = deque()
+
+    def add(self, t: float, v: float | None) -> None:
+        if v is not None:
+            self._q.append((t, v))
+        self._trim(t)
+
+    def _trim(self, t: float) -> None:
+        while self._q and self._q[0][0] < t - self.window:
+            self._q.popleft()
+
+    def mean(self, t: float) -> float | None:
+        self._trim(t)
+        return sum(v for _, v in self._q) / len(self._q) if self._q else None
+
+
+def _valid(name: str, value, default: float, lo: float, hi: float = 1e6) -> float:
+    ok = (isinstance(value, (int, float)) and not isinstance(value, bool)
+          and value == value and lo <= value <= hi)
+    if not ok:
+        log.warning("gpu: invalid %s=%r, using %s", name, value, default)
+        return default
+    return float(value)
+
+
 @register
 class GpuPage(Page):
     name = "gpu"
     interval = 1.0
+    DEFAULT_RATE = 10.0    # Hz, busy metrics
+    DEFAULT_WINDOW = 2.5   # s, busy averaging
 
-    def __init__(self, card: str | int | None = None, sampler=None, interval: float = 1.0) -> None:
+    def __init__(self, card: str | int | None = None, sampler=None, interval: float = 1.0,
+                 busy_rate: float = DEFAULT_RATE, busy_window: float = DEFAULT_WINDOW) -> None:
         self.card = card
-        self.sampler = sampler  # any object with .sample() -> GpuStats
+        self.sampler = sampler  # .sample() -> GpuStats; optional .read_busy() -> (busy, mem)
         self.interval = float(interval)
+        self.busy_rate = _valid("busy_rate", busy_rate, self.DEFAULT_RATE, 1.0, 50.0)
+        self.busy_window = _valid("busy_window", busy_window, self.DEFAULT_WINDOW, 1e-3)
         self.stats = GpuStats()
         self.view = 0  # 0 = summary, 1 = detail
         self._task: asyncio.Task | None = None
+        self._mono = time.monotonic  # injectable clock
+        self._busy = MovingAverage(self.busy_window)
+        self._mem = MovingAverage(self.busy_window)
+        self._hist: deque[float] = deque(maxlen=HISTORY)
+        self._last_full: float | None = None
 
     async def start(self) -> None:
         if self.sampler is None:
@@ -262,13 +311,30 @@ class GpuPage(Page):
                 pass
             self._task = None
 
+    def _tick(self) -> None:
+        """One fast step: busy files every call, the full sample about once a second."""
+        t = self._mono()
+        full = self._last_full is None or t - self._last_full >= 1.0 - 0.5 / self.busy_rate
+        if full:
+            self._last_full = t
+            self.stats = st = self.sampler.sample()
+            self._busy.add(t, st.busy)
+            self._mem.add(t, st.mem_busy)
+            if st.present and (avg := self._busy.mean(t)) is not None:
+                self._hist.append(avg)  # sparkline: smoothed, once per second
+        elif (rb := getattr(self.sampler, "read_busy", None)):
+            b, m = rb()
+            self._busy.add(t, b)
+            self._mem.add(t, m)
+
     async def _loop(self) -> None:
+        period = 1.0 / self.busy_rate
         while True:
             try:
-                self.stats = self.sampler.sample()
+                self._tick()
             except Exception:
                 log.exception("gpu: sample failed")
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(period)
 
     def on_button(self, name: str) -> bool:
         if name in ("MENU4", "MENU5"):
@@ -280,7 +346,9 @@ class GpuPage(Page):
         img = new_canvas()
         d = draw_for(img)
         f = load_font(10)
-        s = self.stats
+        now_t = self._mono()
+        s = replace(self.stats, busy=self._busy.mean(now_t), mem_busy=self._mem.mean(now_t),
+                    busy_hist=list(self._hist))
         if not s.present:
             text(d, (80, 21), "No supported GPU", f, anchor="mm")
         elif self.view == 1:
@@ -322,6 +390,6 @@ class GpuPage(Page):
         text(d, (0, 22), "GTT", f)
         text(d, (30, 22), f"{fmt_gib(s.gtt_used)}/{fmt_gib(s.gtt_total)}G", f)
         text_pct(d, (97, 22), f"FAN {_n(s.fan_pct)}%", f)
-        text(d, (0, 33), "MEM", f)
-        text_pct(d, (30, 33), f"{_n(s.mem_busy):>3}%", f)
+        text(d, (0, 33), "MEM BW", f)
+        text_pct(d, (44, 33), f"{_n(s.mem_busy):>3}%", f)
         hbar(d, (97, 34, 159, 42), (s.mem_busy or 0) / 100)

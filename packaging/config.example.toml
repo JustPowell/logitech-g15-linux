@@ -20,6 +20,8 @@ on_level = 2
 # [page.gpu]   # amdgpu only (sysfs); MENU4/MENU5 toggle summary / detail view
 # card = "card1"   # card name or index; default: the amdgpu with the most VRAM
 # interval = 1.0
+# busy_rate = 10     # Hz at which GPU load / memory-bandwidth are read, 1..50
+# busy_window = 2.5  # seconds those two values are averaged over (> 0)
 
 # [page.media]
 # scroll_speed = 8.0   # long-title marquee speed in px/s (> 0); slow suits the ghosting LCD
