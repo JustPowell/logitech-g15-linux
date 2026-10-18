@@ -123,9 +123,6 @@ Render a page to a 4x PNG with no device: `python -m g15lcd --render-page syssta
 
 `g15lcd/` (device, render, daemon, ipc, ctl, config, `pages/`), `packaging/` (udev rule, service, example config, fish completion, `g15lcd`/`g15ctl` wrappers), `tests/`. Run tests with `python -m unittest discover -v`.
 
-## Future work
-
-
 ## License
 
 MIT, see [LICENSE](LICENSE).
