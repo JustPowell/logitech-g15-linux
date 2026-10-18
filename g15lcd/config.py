@@ -9,7 +9,7 @@ from typing import Any
 
 log = logging.getLogger("g15lcd.config")
 
-DEFAULT_PAGES = ["clock", "sysstats", "media", "custom"]
+DEFAULT_PAGES = ["clock", "sysstats", "gpu", "media", "custom"]
 _KNOWN = {"pages": None, "notify": {"default_seconds"}, "backlight": {"on_level"}, "page": None}
 
 

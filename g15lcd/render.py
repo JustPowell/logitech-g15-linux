@@ -99,6 +99,24 @@ def sparkline(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
     draw.line(pts, fill=1)
 
 
+def draw_pct(d, x: int, y: int) -> None:
+    """Hand-drawn 6x8 percent sign: no font renders '%' cleanly at 10px in 1-bit."""
+    d.rectangle((x, y + 1, x + 1, y + 2), fill=1)        # upper-left ring
+    d.rectangle((x + 4, y + 7, x + 5, y + 8), fill=1)    # lower-right ring
+    d.line((x + 5, y + 1, x, y + 8), fill=1)             # slash
+
+
+def text_pct(d, xy, s: str, f) -> None:
+    """Draw ``s`` with each '%' replaced by draw_pct (6px advance, like the mono font)."""
+    x, y = xy
+    for i, part in enumerate(s.split("%")):
+        if i:
+            draw_pct(d, x, y)
+            x += 6
+        text(d, (x, y), part, f)
+        x += round(d.textlength(part, font=f))
+
+
 def invert_region(img: Image.Image, box: tuple[int, int, int, int]) -> None:
     """Invert pixels in box (x0,y0,x1,y1 inclusive), in place."""
     x0, y0, x1, y1 = box

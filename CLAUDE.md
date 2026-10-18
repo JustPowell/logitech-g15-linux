@@ -37,4 +37,3 @@ python scripts/spike.py pattern|buttons|clear                 # raw hardware che
 
 - `previews/` is git-ignored scratch; refreshed screenshots for the README go in `docs/img/` (4x PNG, dark = ON).
 - Tests use fakes rather than hardware; new pages should accept injectable data sources so `render()` is testable.
-- Planned but deferred: heavygear widget pages.

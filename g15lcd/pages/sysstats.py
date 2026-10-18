@@ -12,7 +12,7 @@ from datetime import datetime
 
 from PIL import Image
 
-from ..render import draw_for, hbar, load_font, new_canvas, sparkline, text
+from ..render import draw_for, draw_pct, hbar, load_font, new_canvas, sparkline, text, text_pct  # noqa: F401
 from . import Page, register
 
 log = logging.getLogger(__name__)
@@ -117,24 +117,6 @@ def fmt_rate(bps: float) -> str:
 
 def fmt_gib(n: int) -> str:
     return f"{n / (1 << 30):.1f}"
-
-
-def draw_pct(d, x: int, y: int) -> None:
-    """Hand-drawn 6x8 percent sign: no font renders '%' cleanly at 10px in 1-bit."""
-    d.rectangle((x, y + 1, x + 1, y + 2), fill=1)        # upper-left ring
-    d.rectangle((x + 4, y + 7, x + 5, y + 8), fill=1)    # lower-right ring
-    d.line((x + 5, y + 1, x, y + 8), fill=1)             # slash
-
-
-def text_pct(d, xy, s: str, f) -> None:
-    """Draw ``s`` with each '%' replaced by draw_pct (6px advance, like the mono font)."""
-    x, y = xy
-    for i, part in enumerate(s.split("%")):
-        if i:
-            draw_pct(d, x, y)
-            x += 6
-        text(d, (x, y), part, f)
-        x += round(d.textlength(part, font=f))
 
 
 @register

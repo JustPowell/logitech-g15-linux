@@ -2,7 +2,7 @@
 
 # Pages in button-cycling order. Each name is a module in g15lcd/pages/.
 # "custom" is required for `g15ctl text` / `g15ctl image`.
-pages = ["clock", "sysstats", "media", "custom"]
+pages = ["clock", "sysstats", "gpu", "media", "custom"]
 
 [notify]
 # How long `g15ctl notify` messages stay up unless -s/--seconds is given.
@@ -16,6 +16,10 @@ on_level = 2
 # page constructor. Pages that don't accept an option log a warning and ignore it.
 # [page.sysstats]
 # interval = 2.0
+
+# [page.gpu]   # amdgpu only (sysfs); MENU4/MENU5 toggle summary / detail view
+# card = "card1"   # card name or index; default: the amdgpu with the most VRAM
+# interval = 1.0
 
 # [page.media]
 # scroll_speed = 8.0   # long-title marquee speed in px/s (> 0); slow suits the ghosting LCD

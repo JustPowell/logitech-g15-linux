@@ -1,6 +1,6 @@
 # g15lcd
 
-User-level Python daemon that drives the 160x43 monochrome LCD of the Logitech G15 (gen 1, USB `046d:c222`) on Linux, plus `g15ctl`, a small CLI to control it. Pages: `clock`, `sysstats` (CPU/RAM/GPU/net), `media` (MPRIS now-playing), `custom` (text/images pushed from scripts), and notification overlays.
+User-level Python daemon that drives the 160x43 monochrome LCD of the Logitech G15 (gen 1, USB `046d:c222`) on Linux, plus `g15ctl`, a small CLI to control it. Pages: `clock`, `sysstats` (CPU/RAM/GPU/net), `gpu` (amdgpu load/VRAM/temps/power/fan), `media` (MPRIS now-playing), `custom` (text/images pushed from scripts), and notification overlays.
 
 ## Why hidraw
 
@@ -55,7 +55,7 @@ Dependencies (system packages): `python-pillow`, `python-psutil` (sysstats), `py
 | Under-LCD key 3 (MENU4) | Page action 1 |
 | Under-LCD key 4 (MENU5) | Page action 2 |
 
-Page actions: `clock` none; `sysstats` MENU4/MENU5 = previous/next view (summary / per-core bars); `media` MENU4 = play/pause, MENU5 = next track; `custom` none.
+Page actions: `clock` none; `sysstats` MENU4/MENU5 = previous/next view (summary / per-core bars); `gpu` MENU4/MENU5 = previous/next view (summary / detail); `media` MENU4 = play/pause, MENU5 = next track; `custom` none.
 
 ## Control protocol
 
@@ -100,6 +100,10 @@ Render a page to a 4x PNG with no device: `python -m g15lcd --render-page syssta
 | --- | --- | --- |
 | ![clock](docs/img/clock.png) | ![sysstats](docs/img/sysstats.png) | ![cores](docs/img/sysstats-cores.png) |
 
+| GPU | GPU detail |
+| --- | --- |
+| ![gpu](docs/img/gpu.png) | ![gpu detail](docs/img/gpu-detail.png) |
+
 | Media | Notification | Custom |
 | --- | --- | --- |
 | ![media](docs/img/media.png) | ![notify](docs/img/notify.png) | ![custom](docs/img/custom.png) |
@@ -121,7 +125,6 @@ Render a page to a 4x PNG with no device: `python -m g15lcd --render-page syssta
 
 ## Future work
 
-Planned: heavygear widgets as additional pages.
 
 ## License
 

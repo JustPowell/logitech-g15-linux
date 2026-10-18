@@ -326,7 +326,7 @@ if __name__ == "__main__":
 class DefaultPagesTest(unittest.TestCase):
     def test_defaults(self) -> None:
         from g15lcd.config import DEFAULT_PAGES, Config
-        self.assertEqual(DEFAULT_PAGES, ["clock", "sysstats", "media", "custom"])
+        self.assertEqual(DEFAULT_PAGES, ["clock", "sysstats", "gpu", "media", "custom"])
         self.assertEqual(Config().pages, DEFAULT_PAGES)
 
     def test_example_config_matches(self) -> None:
