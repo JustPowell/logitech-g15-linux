@@ -111,6 +111,12 @@ def make_handlers(daemon: Any) -> dict[str, Handler]:
             raise ValueError("'seconds' must be a number in (0, 300]")
         return {"queued": daemon.notify(body, title, seconds)}
 
+    def dismiss(req: dict[str, Any]) -> dict[str, Any]:
+        every = req.get("all", False)
+        if not isinstance(every, bool):
+            raise ValueError("'all' must be a boolean")
+        return {"dismissed": daemon.dismiss(every)}
+
     def text(req: dict[str, Any]) -> dict[str, Any]:
         body = _text_arg(req, "text")
         align = req.get("align", "left")
@@ -137,7 +143,7 @@ def make_handlers(daemon: Any) -> dict[str, Handler]:
             raise ValueError("'level' must be 0, 1, 2 or \"toggle\"")
         return {"level": daemon.set_backlight(level)}
 
-    return {"ping": ping, "page": page, "pages": pages, "notify": notify, "text": text,
+    return {"ping": ping, "page": page, "pages": pages, "notify": notify, "dismiss": dismiss, "text": text,
             "image": image, "backlight": backlight}
 
 

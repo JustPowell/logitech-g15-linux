@@ -55,6 +55,8 @@ Dependencies (system packages): `python-pillow`, `python-psutil` (sysstats), `py
 | Under-LCD key 3 (MENU4) | Page action 1 |
 | Under-LCD key 4 (MENU5) | Page action 2 |
 
+While a notification is on screen, MENU2-MENU5 instead dismiss it (the next queued one shows) and the press does nothing else. MENU1 still toggles the backlight. Page-name labels are not notifications and never swallow presses.
+
 Page actions: `clock` none; `sysstats` MENU4/MENU5 = previous/next view (summary / per-core bars); `gpu` MENU4/MENU5 = previous/next view (summary / detail); `media` MENU4 = play/pause, MENU5 = next track; `custom` none.
 
 ## Control protocol
@@ -67,6 +69,7 @@ Page actions: `clock` none; `sysstats` MENU4/MENU5 = previous/next view (summary
 | `pages` | | `pages` (list), `current` |
 | `page` | `name`: page name, `next` or `prev` | `page` |
 | `notify` | `text`, optional `title`, `seconds` (0-300] | `queued` |
+| `dismiss` | optional `all` (bool; also clear queued) | `dismissed` (count) |
 | `text` | `text`, optional `align` (`left`/`center`), `show` | |
 | `image` | `path` (absolute) or `data` (base64), optional `show` | |
 | `backlight` | `level`: 0, 1, 2 or `"toggle"` | `level` |
@@ -91,6 +94,26 @@ make; g15ctl notify "make exit $status"
 ```
 
 `\n` in text arguments becomes a newline. Exit status is non-zero if the daemon is unreachable or rejects the request.
+
+## Desktop notifications
+
+The daemon can mirror desktop pop-ups (anything sent to `org.freedesktop.Notifications`, e.g. by KDE Plasma, `notify-send`, chat apps) onto the LCD. It only observes: a monitor connection on the session bus (`BecomeMonitor`, falling back to an eavesdrop match) watches `Notify` calls in a separate thread, so the desktop's own pop-ups are unchanged. If the bus refuses, a warning is logged once and the bridge stays off; the daemon keeps running. Needs `python-dbus` and `python-gobject`.
+
+**Privacy:** this copies notification text (message previews, senders) onto a physical screen that anyone near the keyboard can read. It is off by default; use `hide_body`, `include_apps` / `exclude_apps` and `min_urgency` to limit what is shown.
+
+Enable it in the config:
+
+```toml
+[notify.desktop]
+enabled = true
+exclude_apps = ["Spotify"]
+min_urgency = "normal"   # low | normal | critical
+hide_body = false        # true: app + summary only
+show_app = true          # app name on the title line, summary and text below
+seconds = 5              # default [notify] default_seconds; critical shows 2x (max 300)
+```
+
+Markup in bodies (`<b>`, `<i>`, `<a href>`, `<img>`; `<br>` becomes a line break) is stripped, entities are unescaped and whitespace collapsed. Notifications with an empty summary and body are skipped. A repeat with the same app and summary (or the same nonzero `replaces_id`) replaces the waiting or showing one in place and restarts its timer instead of queuing again. Mirrored notifications share the queue with `g15ctl notify` (max 20); press MENU2-MENU5 or run `g15ctl dismiss [--all]` to clear them. Test it with `notify-send -a demo "Hello" "from the desktop"`.
 
 ## Previews
 

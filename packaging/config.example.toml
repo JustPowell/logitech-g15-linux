@@ -8,6 +8,18 @@ pages = ["clock", "sysstats", "gpu", "media", "custom"]
 # How long `g15ctl notify` messages stay up unless -s/--seconds is given.
 default_seconds = 5
 
+# Mirror desktop pop-ups (org.freedesktop.Notifications) onto the LCD. Off by default:
+# this copies notification text onto a physical screen anyone nearby can read.
+# Needs python-dbus and python-gobject. Uncomment to enable.
+# [notify.desktop]
+# enabled = true
+# include_apps = []        # app names to show (case-insensitive); empty = all
+# exclude_apps = []        # app names never shown
+# min_urgency = "normal"   # "low" | "normal" | "critical"
+# hide_body = false        # true: show only app + summary, never the message text
+# show_app = true          # app name as the title line; false: summary as title
+# seconds = 5              # display time; default = default_seconds above (critical: 2x, max 300)
+
 [backlight]
 # Level used when the backlight is toggled on (MENU1 button / `g15ctl backlight toggle`): 1 or 2.
 on_level = 2

@@ -9,6 +9,7 @@ import signal
 import socket
 import time
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime
 
 from PIL import Image
@@ -67,19 +68,31 @@ class PageManager:
         raise KeyError(f"no such page {name!r}")
 
 
+@dataclass
+class _Note:
+    img: Image.Image
+    seconds: float
+    key: tuple | None = None  # (app, summary) coalescing identity
+    rid: int = 0              # desktop replaces_id, 0 = none
+
+    def matches(self, key: tuple | None, rid: int) -> bool:
+        return bool((rid and self.rid == rid) or (key is not None and self.key == key))
+
+
 class Overlay:
     """Temporary images drawn centred over the page.
 
     ``show`` is a transient label (replaces the previous label); ``queue``
     adds notifications that are shown one after another (FIFO) and take
-    priority over the label.
+    priority over the label. Only notifications can be dismissed.
     """
 
     def __init__(self) -> None:
         self._img: Image.Image | None = None
         self._until = 0.0
-        self._queue: deque[tuple[Image.Image, float]] = deque()
+        self._queue: deque[_Note] = deque()
         self._note: Image.Image | None = None
+        self._cur: _Note | None = None
         self._note_until = 0.0
 
     def show(self, img: Image.Image | str, seconds: float, now: float | None = None) -> None:
@@ -92,15 +105,54 @@ class Overlay:
         """Queue a notification; returns how many are waiting or showing."""
         if len(self._queue) >= MAX_QUEUED:
             raise ValueError("notification queue full")
-        self._queue.append((img, seconds))
+        self._queue.append(_Note(img, seconds))
         return len(self._queue) + (self._note is not None)
+
+    def upsert(self, img: Image.Image, seconds: float, key: tuple | None = None, rid: int = 0,
+               now: float | None = None) -> bool:
+        """Queue a notification, or replace a waiting/showing one with the same key or
+        nonzero ``rid`` in place (a showing one restarts its timer). Returns True if replaced."""
+        now = time.monotonic() if now is None else now
+        self._advance(now)
+        if self._cur is not None and self._cur.matches(key, rid):
+            self._cur = _Note(img, seconds, key, rid)
+            self._note, self._note_until = img, now + seconds
+            return True
+        for i, n in enumerate(self._queue):
+            if n.matches(key, rid):
+                self._queue[i] = _Note(img, seconds, key, rid)
+                return True
+        if len(self._queue) >= MAX_QUEUED:
+            raise ValueError("notification queue full")
+        self._queue.append(_Note(img, seconds, key, rid))
+        return False
+
+    def notifying(self, now: float | None = None) -> bool:
+        """True while a notification (not a page label) is on screen."""
+        self._advance(time.monotonic() if now is None else now)
+        return self._note is not None
+
+    def dismiss(self, all: bool = False, now: float | None = None) -> int:
+        """Drop the showing notification (next queued one shows), or every one if ``all``.
+        Returns how many were dismissed."""
+        now = time.monotonic() if now is None else now
+        self._advance(now)
+        n = 0
+        if self._note is not None:
+            self._note = self._cur = None
+            n = 1
+        if all:
+            n += len(self._queue)
+            self._queue.clear()
+        self._advance(now)
+        return n
 
     def _advance(self, now: float) -> None:
         if self._note is not None and now >= self._note_until:
-            self._note = None
+            self._note = self._cur = None
         if self._note is None and self._queue:
-            self._note, secs = self._queue.popleft()
-            self._note_until = now + secs
+            self._cur = self._queue.popleft()
+            self._note, self._note_until = self._cur.img, now + self._cur.seconds
         if self._img is not None and now >= self._until:
             self._img = None
 
@@ -189,6 +241,22 @@ class Daemon:
         self._last_render = float("-inf")
         self._next_retry = 0.0
         self._overlay_was_on = False
+        self.bridge = None
+
+    def _start_bridge(self, loop: asyncio.AbstractEventLoop) -> None:
+        cfg = self.config.desktop
+        if not cfg.enabled:
+            return
+        from .notifybridge import NotifyBridge
+
+        def deliver(*args) -> None:
+            try:
+                loop.call_soon_threadsafe(self.notify_desktop, *args)
+            except RuntimeError:  # loop already closed during shutdown
+                pass
+
+        self.bridge = NotifyBridge(cfg, self.config.notify_seconds, deliver)
+        self.bridge.start()
 
     def _build_pages(self, names: list[str]) -> list[Page]:
         built: list[Page] = []
@@ -218,6 +286,22 @@ class Daemon:
         self.wake()
         return n
 
+    def notify_desktop(self, title: str | None, text: str, seconds: float,
+                       key: tuple | None = None, rid: int = 0) -> None:
+        """Show a mirrored desktop notification, coalescing repeats (runs on the loop thread)."""
+        try:
+            self.overlay.upsert(notification_image(text, title), seconds, key, rid)
+        except ValueError as e:
+            log.warning("desktop notification dropped: %s", e)
+            return
+        self.wake()
+
+    def dismiss(self, all: bool = False) -> int:
+        n = self.overlay.dismiss(all)
+        if n:
+            self.wake()
+        return n
+
     def custom_page(self):
         page = self.manager.find("custom")
         if page is None:
@@ -245,6 +329,8 @@ class Daemon:
         log.debug("button %s", name)
         if name == "MENU1":
             self.backlight.toggle()
+        elif self.overlay.notifying():
+            self.dismiss()  # MENU2-5 dismiss a showing notification and are consumed
         elif name == "MENU2":
             self.switch("prev")
         elif name == "MENU3":
@@ -320,6 +406,10 @@ class Daemon:
                 log.exception("page %s failed to start; skipping it", p.name)
                 self.manager.remove(p)
         await self.ipc.start()
+        try:
+            self._start_bridge(loop)
+        except Exception:
+            log.exception("desktop notification bridge failed to start; continuing without it")
         sd_notify("READY=1")
         try:
             while not self._stop.is_set():
@@ -337,6 +427,8 @@ class Daemon:
     async def _shutdown(self) -> None:
         log.info("shutting down")
         sd_notify("STOPPING=1")
+        if self.bridge is not None:
+            await asyncio.get_running_loop().run_in_executor(None, self.bridge.stop)
         await self.ipc.stop()
         for p in self.manager.pages:
             try:

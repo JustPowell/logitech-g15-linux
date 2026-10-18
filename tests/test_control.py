@@ -131,6 +131,37 @@ class DaemonTests(unittest.TestCase):
             dm = make_daemon(["zzz"], d)
             self.assertTrue(dm.manager.pages)
 
+    def test_buttons_dismiss_notifications(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            dm = make_daemon(["clock", "sysstats"], d)
+            dm.notify("one")
+            dm.notify("two")
+            dm.handle_button("MENU3")               # consumed: dismisses "one", no page switch
+            self.assertEqual(dm.manager.current.name, "clock")
+            self.assertTrue(dm.overlay.notifying())  # "two" now showing
+            dm.handle_button("MENU1")               # backlight still works
+            self.assertEqual(dm.backlight.get(), 2)
+            self.assertTrue(dm.overlay.notifying())
+            dm.handle_button("MENU5")
+            self.assertFalse(dm.overlay.notifying())
+            dm.handle_button("MENU3")               # nothing showing: normal page switch
+            self.assertEqual(dm.manager.current.name, "sysstats")
+
+    def test_label_does_not_swallow_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            dm = make_daemon(["clock", "sysstats", "custom"], d)
+            dm.handle_button("MENU3")               # shows a page label
+            dm.handle_button("MENU3")
+            self.assertEqual(dm.manager.current.name, "custom")
+
+    def test_notify_desktop_coalesces(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            dm = make_daemon(["clock"], d)
+            dm.notify_desktop("App", "a", 5, ("app", "s"), 0)
+            dm.notify_desktop("App", "a", 5, ("app", "t"), 0)
+            dm.notify_desktop("App", "b", 5, ("app", "t"), 0)
+            self.assertEqual(len(dm.overlay._queue), 1)
+
     def test_start_failure_skipped(self) -> None:
         class Boom(Page):
             name = "boom"
@@ -306,6 +337,8 @@ class CtlTests(unittest.TestCase):
         self.assertEqual(self.req("backlight", "2"), {"cmd": "backlight", "level": 2})
         self.assertEqual(self.req("backlight", "toggle"), {"cmd": "backlight", "level": "toggle"})
         self.assertEqual(self.req("ping"), {"cmd": "ping"})
+        self.assertEqual(self.req("dismiss"), {"cmd": "dismiss"})
+        self.assertEqual(self.req("dismiss", "--all"), {"cmd": "dismiss", "all": True})
 
     def test_no_daemon(self) -> None:
         with tempfile.TemporaryDirectory() as d:

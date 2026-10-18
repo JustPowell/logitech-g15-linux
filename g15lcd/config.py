@@ -10,7 +10,9 @@ from typing import Any
 log = logging.getLogger("g15lcd.config")
 
 DEFAULT_PAGES = ["clock", "sysstats", "gpu", "media", "custom"]
-_KNOWN = {"pages": None, "notify": {"default_seconds"}, "backlight": {"on_level"}, "page": None}
+_KNOWN = {"pages": None, "notify": {"default_seconds", "desktop"}, "backlight": {"on_level"}, "page": None}
+_DESKTOP_KEYS = {"enabled", "include_apps", "exclude_apps", "min_urgency", "hide_body", "show_app", "seconds"}
+URGENCIES = ("low", "normal", "critical")
 
 
 class ConfigError(Exception):
@@ -18,10 +20,23 @@ class ConfigError(Exception):
 
 
 @dataclass
+class DesktopConfig:
+    """``[notify.desktop]``: mirror org.freedesktop.Notifications pop-ups onto the LCD."""
+    enabled: bool = False
+    include_apps: list[str] = field(default_factory=list)  # empty = all
+    exclude_apps: list[str] = field(default_factory=list)
+    min_urgency: str = "normal"
+    hide_body: bool = False
+    show_app: bool = True
+    seconds: float | None = None  # None = [notify] default_seconds
+
+
+@dataclass
 class Config:
     pages: list[str] = field(default_factory=lambda: list(DEFAULT_PAGES))
     notify_seconds: float = 5.0
     backlight_on: int = 2
+    desktop: DesktopConfig = field(default_factory=DesktopConfig)
     page_options: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -35,6 +50,37 @@ def _table(data: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(v, dict):
         raise ConfigError(f"[{key}] must be a table")
     return v
+
+
+def _parse_desktop(tbl: dict[str, Any]) -> DesktopConfig:
+    for k in tbl.keys() - _DESKTOP_KEYS:
+        log.warning("config: unknown key %r in [notify.desktop] ignored", k)
+    out = DesktopConfig()
+
+    def bad(k: str) -> ConfigError:
+        return ConfigError(f"[notify.desktop] {k} has an invalid value: {tbl[k]!r}")
+
+    for k in ("enabled", "hide_body", "show_app"):
+        if k in tbl:
+            if not isinstance(tbl[k], bool):
+                raise bad(k)
+            setattr(out, k, tbl[k])
+    for k in ("include_apps", "exclude_apps"):
+        if k in tbl:
+            v = tbl[k]
+            if not (isinstance(v, list) and all(isinstance(a, str) for a in v)):
+                raise bad(k)
+            setattr(out, k, list(v))
+    if "min_urgency" in tbl:
+        if tbl["min_urgency"] not in URGENCIES:
+            raise bad("min_urgency")
+        out.min_urgency = tbl["min_urgency"]
+    if "seconds" in tbl:
+        v = tbl["seconds"]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v <= 300:
+            raise bad("seconds")
+        out.seconds = float(v)
+    return out
 
 
 def parse(data: dict[str, Any]) -> Config:
@@ -58,6 +104,10 @@ def parse(data: dict[str, Any]) -> Config:
                 raise ConfigError(f"[{section}] {attr} has an invalid value: {tbl[attr]!r}")
             setattr(cfg, "notify_seconds" if section == "notify" else "backlight_on",
                     float(tbl[attr]) if section == "notify" else tbl[attr])
+    desktop = _table(data, "notify").get("desktop", {})
+    if not isinstance(desktop, dict):
+        raise ConfigError("[notify.desktop] must be a table")
+    cfg.desktop = _parse_desktop(desktop)
     for name, opts in _table(data, "page").items():
         if not isinstance(opts, dict):
             raise ConfigError(f"[page.{name}] must be a table")

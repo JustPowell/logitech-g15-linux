@@ -13,13 +13,14 @@ function __g15ctl_pages
     end
 end
 
-set -l cmds notify text image page pages backlight ping
+set -l cmds notify dismiss text image page pages backlight ping
 
 complete -c g15ctl -f
 complete -c g15ctl -l socket -r -F -d 'Socket path'
 complete -c g15ctl -s h -l help -d 'Show help'
 
 complete -c g15ctl -n "not __fish_seen_subcommand_from $cmds" -a notify -d 'Show a notification overlay'
+complete -c g15ctl -n "not __fish_seen_subcommand_from $cmds" -a dismiss -d 'Dismiss the showing notification'
 complete -c g15ctl -n "not __fish_seen_subcommand_from $cmds" -a text -d 'Set custom page text'
 complete -c g15ctl -n "not __fish_seen_subcommand_from $cmds" -a image -d 'Show an image on the custom page'
 complete -c g15ctl -n "not __fish_seen_subcommand_from $cmds" -a page -d 'Switch page'
@@ -29,6 +30,7 @@ complete -c g15ctl -n "not __fish_seen_subcommand_from $cmds" -a ping -d 'Check 
 
 complete -c g15ctl -n '__fish_seen_subcommand_from notify' -s t -l title -r -d 'Title line'
 complete -c g15ctl -n '__fish_seen_subcommand_from notify' -s s -l seconds -r -d 'Seconds to show'
+complete -c g15ctl -n '__fish_seen_subcommand_from dismiss' -l all -d 'Also clear queued notifications'
 complete -c g15ctl -n '__fish_seen_subcommand_from text' -l align -x -a 'left center' -d 'Text alignment'
 complete -c g15ctl -n '__fish_seen_subcommand_from text image' -l show -d 'Switch to the custom page'
 complete -c g15ctl -n '__fish_seen_subcommand_from image' -F

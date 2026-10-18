@@ -26,6 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
     n.add_argument("text")
     n.add_argument("-t", "--title")
     n.add_argument("-s", "--seconds", type=float)
+    dm = sub.add_parser("dismiss", help="dismiss the showing notification (and queued ones with --all)")
+    dm.add_argument("--all", action="store_true")
     t = sub.add_parser("text", help="set the custom page text ('-' or no TEXT reads stdin)")
     t.add_argument("text", nargs="?", default="-")
     t.add_argument("--align", choices=("left", "center"), default="left")
@@ -51,6 +53,8 @@ def build_request(args: argparse.Namespace, stdin: Any = None) -> dict[str, Any]
         if args.seconds is not None:
             req["seconds"] = args.seconds
         return req
+    if c == "dismiss":
+        return {"cmd": "dismiss", "all": True} if args.all else {"cmd": "dismiss"}
     if c == "text":
         body = (stdin or sys.stdin).read() if args.text == "-" else _unescape(args.text)
         req = {"cmd": "text", "text": body.rstrip("\n") if args.text == "-" else body}
