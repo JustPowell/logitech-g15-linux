@@ -1,0 +1,5 @@
+#!/bin/sh
+# Dev wrapper for g15ctl: runs the checkout this script lives in (symlink-safe).
+# Install:  ln -s (realpath packaging/g15ctl) ~/.local/bin/g15ctl     (fish)
+here=$(dirname "$(readlink -f "$0")")
+PYTHONPATH="$here/.." exec python -m g15lcd.ctl "$@"

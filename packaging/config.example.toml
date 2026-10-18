@@ -1,0 +1,22 @@
+# Copy to ~/.config/g15lcd/config.toml (or pass --config PATH). All keys optional.
+
+# Pages in button-cycling order. Each name is a module in g15lcd/pages/.
+# "custom" is required for `g15ctl text` / `g15ctl image`.
+pages = ["clock", "sysstats", "media", "custom"]
+
+[notify]
+# How long `g15ctl notify` messages stay up unless -s/--seconds is given.
+default_seconds = 5
+
+[backlight]
+# Level used when the backlight is toggled on (MENU1 button / `g15ctl backlight toggle`): 1 or 2.
+on_level = 2
+
+# Per-page options: [page.<name>] tables are passed as keyword arguments to the
+# page constructor. Pages that don't accept an option log a warning and ignore it.
+# [page.sysstats]
+# interval = 2.0
+
+# [page.media]
+# scroll_speed = 8.0   # long-title marquee speed in px/s (> 0); slow suits the ghosting LCD
+# scroll_pause = 3.0   # seconds the title rests at the start before each pass (>= 0)

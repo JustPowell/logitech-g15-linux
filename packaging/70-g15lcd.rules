@@ -1,0 +1,5 @@
+# Let the logged-in seat user open the G15 LCD/buttons hidraw node.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c222", TAG+="uaccess"
+
+# LED sysfs files are not covered by uaccess ACLs: hand the backlight to group "video".
+ACTION=="add|change", SUBSYSTEM=="leds", KERNEL=="g15::*", RUN+="/bin/chgrp video /sys%p/brightness", RUN+="/bin/chmod g+w /sys%p/brightness"

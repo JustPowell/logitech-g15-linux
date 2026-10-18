@@ -1,0 +1,15 @@
+# Runs the ~/.local/bin/g15lcd wrapper (symlink to packaging/g15lcd in the checkout).
+# Ordered after/bound to the graphical session so the D-Bus session bus (MPRIS) exists.
+[Unit]
+Description=Logitech G15 LCD daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=notify
+ExecStart=%h/.local/bin/g15lcd
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

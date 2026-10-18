@@ -1,0 +1,5 @@
+#!/bin/sh
+# Dev wrapper for the g15lcd daemon: runs the checkout this script lives in (symlink-safe).
+# Install:  ln -s (realpath packaging/g15lcd) ~/.local/bin/g15lcd     (fish)
+here=$(dirname "$(readlink -f "$0")")
+PYTHONPATH="$here/.." exec python -m g15lcd "$@"
